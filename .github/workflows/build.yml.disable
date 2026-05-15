@@ -1,0 +1,25 @@
+name: Build
+
+on:
+  push:
+    branches: [ main ]
+    paths-ignore:
+      - 'README.md'
+      - 'docs/**'
+  pull_request:
+    paths-ignore:
+      - 'README.md'
+      - 'docs/**'
+  workflow_dispatch:
+
+jobs:
+  build-alma:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        submodules: 'recursive'
+    - name: Build Docker image for building
+      run: docker build -t alma-build -f Dockerfile.rhel .
+    - name: Build in Docker
+      run: docker run -v "$(pwd):/code" -w /code alma-build ./scripts/build-alma.sh

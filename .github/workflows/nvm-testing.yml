@@ -1,0 +1,66 @@
+name: Test on NVM Cluster 
+
+on:
+  push:
+    branches: [ main ]
+    paths-ignore:
+      - 'README.md'
+      - 'docs/**'
+  pull_request:
+    paths-ignore:
+      - 'README.md'
+      - 'docs/**'
+  workflow_dispatch:
+
+jobs:
+  local-test:
+    runs-on: [self-hosted, nvm]
+    steps:
+      - name: Setup Proxy
+        run: |
+          my_proxy_path=http://dfs-dev.local:7890
+          git config --global http.proxy $my_proxy_path
+          git config --global https.proxy $my_proxy_path
+      - uses: actions/checkout@v3
+        with:
+          submodules: 'recursive'
+      - name: Debug Build and Run (with log)
+        run: DFS_TEST_RUN_LOG_LEVEL=info timeout 600 ./scripts/local/gh-action-nvm-runner/test-Debug.sh
+      - uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: debug-run-logs
+          path: "*.log"
+          retention-days: 3
+      - name: Publish Debug Test Results
+        uses: EnricoMi/publish-unit-test-result-action@v2
+        if: always()
+        with:
+          check_name: "Debug Test Results"
+          files: |
+            build/test-reports/*.xml
+      - name: RelWithDebInfo Build and Performance Test (without log)
+        run: DFS_TEST_RUN_LOG_LEVEL=off timeout 600 ./scripts/local/gh-action-nvm-runner/test-RelWithDebInfo.sh
+      - uses: mshick/add-pr-comment@v2
+        with:
+          allow-repeats: true
+          # refresh-message-position: true
+          message-path: |
+            ./scripts/local/gh-action-nvm-runner/pr-markdown-report.md
+            ./mdtest.data.md
+            ./ior.data.md
+      - name: RelWithDebInfo Build and Test (with log)
+        run: DFS_TEST_RUN_LOG_LEVEL=info timeout 600 ./scripts/local/gh-action-nvm-runner/test-RelWithDebInfo.sh
+      - uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: release-run-logs
+          path: "*.log"
+          retention-days: 3
+      - name: Publish Release Test Results
+        uses: EnricoMi/publish-unit-test-result-action@v2
+        if: always()
+        with:
+          check_name: "Release Test Results"
+          files: |
+            build/test-reports/*.xml

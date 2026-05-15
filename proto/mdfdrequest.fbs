@@ -1,0 +1,17 @@
+include "mdrequest.fbs";
+
+namespace dfs.mdrequest;
+
+table MDFDCommonRequest {
+  uid: uint32;
+  gid: uint32;
+  op: MDOpType;
+  id: uint64;
+  offset: int64; // for getdents
+  u32arg: uint32; // size for getdents() and mode for mkdirat() and accessat()
+  u64arg: uint64; // read_cutoff_version for GetDentViews and future extensions
+  newpath: string; // only for renameat
+  last_seen_hlc: uint64;
+}
+
+root_type MDFDCommonRequest;

@@ -1,0 +1,6 @@
+FROM almalinux:8.8
+RUN dnf install -y epel-release
+RUN dnf config-manager --enable powertools
+RUN dnf install -y git openssl-devel gcc-toolset-12-gcc-c++ gcc-toolset-12-gdb \
+  cmake ninja-build binutils-devel numactl-devel \
+  libaio-devel libibverbs-devel lz4-devel libzstd-devel libcurl-devel libpfm-devel systemtap-sdt-devel

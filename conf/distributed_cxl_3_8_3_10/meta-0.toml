@@ -1,0 +1,6 @@
+[meta]
+host = "172.16.33.35"
+port = 31850
+data_root_path = "/tmp/dfs-prototype/meta_0/"
+core_ids = "32-41"
+meta_id = 0

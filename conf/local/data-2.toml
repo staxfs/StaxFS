@@ -1,0 +1,5 @@
+[data]
+host = "localhost"
+port = 31855
+data_root_path = "/tmp/dfs-prototype/data_2/"
+core_ids = "20-29"

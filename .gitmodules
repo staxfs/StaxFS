@@ -1,0 +1,48 @@
+# [submodule "third_party/rocksdb"]
+# 	path = third_party/rocksdb
+# 	url = https://github.com/facebook/rocksdb
+[submodule "third_party/concurrentqueue"]
+	path = third_party/concurrentqueue
+	url = https://github.com/cameron314/concurrentqueue
+[submodule "third_party/libcuckoo"]
+	path = third_party/libcuckoo
+	url = https://github.com/efficient/libcuckoo
+[submodule "third_party/googletest"]
+	path = third_party/googletest
+	url = https://github.com/google/googletest
+[submodule "third_party/spdlog"]
+	path = third_party/spdlog
+	url = https://github.com/gabime/spdlog
+[submodule "third_party/backward-cpp"]
+	path = third_party/backward-cpp
+	url = https://github.com/bombela/backward-cpp
+[submodule "erpc"]
+	path = third_party/erpc
+	url = https://github.com/hhyx/eRPC
+[submodule "third_party/tomlplusplus"]
+	path = third_party/tomlplusplus
+	url = https://github.com/marzer/tomlplusplus
+[submodule "third_party/benchmark"]
+	path = third_party/benchmark
+	url = https://github.com/google/benchmark
+[submodule "third_party/liburing"]
+	path = third_party/liburing
+	url = https://github.com/axboe/liburing
+[submodule "third_party/cxxopts"]
+	path = third_party/cxxopts
+	url = https://github.com/jarro2783/cxxopts
+[submodule "third_party/unordered_dense"]
+	path = third_party/unordered_dense
+	url = https://github.com/martinus/unordered_dense
+[submodule "third_party/mimalloc"]
+	path = third_party/mimalloc
+	url = https://github.com/microsoft/mimalloc
+[submodule "third_party/opentelemetry-cpp"]
+	path = third_party/opentelemetry-cpp
+	url = https://github.com/open-telemetry/opentelemetry-cpp
+[submodule "third_party/flatbuffers"]
+	path = third_party/flatbuffers
+	url = https://github.com/google/flatbuffers
+[submodule "third_party/fmt"]
+	path = third_party/fmt
+	url = https://github.com/fmtlib/fmt

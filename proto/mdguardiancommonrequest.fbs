@@ -1,0 +1,10 @@
+include "mdrequest.fbs";
+
+namespace dfs.mdrequest;
+
+table MDGuardianCommonRequest {
+  meta_num: int;
+  reqs: [int64];
+}
+
+root_type MDGuardianCommonRequest;

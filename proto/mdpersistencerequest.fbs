@@ -1,0 +1,16 @@
+include "mdrequest.fbs";
+
+namespace dfs.mdrequest;
+
+table MDPersistenceRequest {
+inode_change_op:
+  [ubyte];
+inode_change_id:
+  [uint64];
+inode_change_value:
+  [long];
+inode_change_version:
+  [uint64];
+}
+
+root_type MDPersistenceRequest;

@@ -1,0 +1,5 @@
+[data]
+host = "172.16.33.35"
+port = 31856
+data_root_path = "/tmp/dfs-prototype/data_0/"
+core_ids = "0-9"

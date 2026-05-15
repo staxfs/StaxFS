@@ -1,0 +1,51 @@
+namespace dfs.mdrequest;
+
+enum MDOpType: byte { 
+  None = 0, 
+  /* Path Common Syscall */
+  Unlink, RemoveDir, /* path -> 0 | -1 */ 
+  Access, MakeDir, /* path, mode -> 0 | -1 */
+  Stat, /* path -> 0 & buffer | -1 */
+  Rename, Link, /* oldpath, newpath -> 0 | -1 */ 
+  Create, /* [WARNING: NOT creat()!] path, mode -> inode_id | 0 */
+  OpenDir, /* path, alloc -> Dirstream */
+  /* File Descriptor Common Syscall */
+  GetDents, /* id, offset, size -> buffer */
+  GetDentViews, /* id, offset, size -> latest local dent views */
+  /* General Inode Get/Put */
+  Chmod, /* path, mode -> 0 | -1 */
+  Get, /* inode_id -> inode | -1 */
+  Put /* inode_id, inode -> 0 | -1*/
+}
+
+// table PathArg{
+//   path: string;
+// }
+
+// table ModeArgs{ // For access() and mkdir()
+//   mode: uint32;
+//   path: string;
+// }
+
+// table RenameArgs{
+//   oldpath: string;
+//   newpath: string;
+// }
+
+// union RequestArgs{
+//   PathArg,
+//   ModeArgs,
+//   RenameArgs
+// }
+
+
+table MDRequest {
+  uid: uint32;
+  gid: uint32;
+  op: MDOpType;
+  inode_id: uint64;
+  last_seen_hlc: uint64;
+  inode: [ubyte];
+}
+
+root_type MDRequest;

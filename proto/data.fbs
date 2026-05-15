@@ -1,0 +1,13 @@
+namespace dfs.data;
+
+enum RequestType:byte { None = 0, Read = 1, Write = 2}
+
+table DataRequest {
+  io_type: RequestType;
+  objuuid: uint64;
+  offset: uint64;
+  size: uint64;
+  buffer: [ubyte];
+}
+
+root_type DataRequest;

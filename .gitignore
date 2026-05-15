@@ -1,0 +1,55 @@
+.vscode
+build
+temp
+.cache
+src/test*.cc
+src/*.out
+CMakeFiles
+liburing
+rocksdb
+CMakeCache.txt
+version.cpp
+cmake-build*
+*.log
+*.csv
+*.json
+*.xml
+*.data.md
+*.xlsx
+findings.md
+progress.md
+task_plan.md
+test/cxl/cxl_lock_test
+
+# Prerequisites
+*.d
+
+# Compiled Object files
+*.slo
+*.lo
+*.o
+*.obj
+
+# Precompiled Headers
+*.gch
+*.pch
+
+# Compiled Dynamic libraries
+*.so
+*.dylib
+*.dll
+
+# Fortran module files
+*.mod
+*.smod
+
+# Compiled Static libraries
+*.lai
+*.la
+*.a
+*.lib
+
+# Executables
+*.exe
+*.out
+*.app

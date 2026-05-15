@@ -1,0 +1,49 @@
+include "mdrequest.fbs";
+
+namespace dfs.mdrequest;
+
+// table ObjectLocation {
+//     node_id_: ulong (bit_flags: 48);
+//     disk_id_: ulong (bit_flags: 16);
+// }
+
+table Inode {
+    id: ulong;
+    nlink: ushort;
+    mode: uint;
+    extra: uint;
+    uid: uint;
+    gid: uint;
+    rdev: uint;
+    size: ulong;
+    blksize: ulong;
+    blocks: ulong;
+    atime: long;
+    mtime: long;
+    ctime: long;
+    // Simplified locations representation.
+    // Adjust according to your ObjectLocation structure.
+//     locations: [ObjectLocation]; // Example: Assuming ObjectLocation is simply represented by IDs for simplicity.
+}
+
+table Dirent {
+    id: ulong;
+    pid: ulong;
+    off: long;
+    reclen: ushort;
+    last_meta_server: short;
+    next_meta_server: short;
+    type: ubyte;
+    name: string;
+}
+
+table MDMoveNodeRequest {
+    mark: short; // unuse
+    last_meta_server: short;
+    move_back: short;
+    id: string;
+    inodes: [Inode];
+    dirents: [Dirent];
+}
+
+root_type MDMoveNodeRequest;

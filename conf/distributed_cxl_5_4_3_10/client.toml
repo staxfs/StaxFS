@@ -1,0 +1,50 @@
+[client]
+host = "localhost"
+port = 31850
+
+[meta]
+num=5
+
+  [meta.0]
+  host = "172.16.33.35"
+  port = 31850
+  threads = 4
+
+  [meta.1]
+  host = "172.16.33.35"
+  port = 31851
+  threads = 4
+
+  [meta.2]
+  host = "172.16.33.35"
+  port = 31852
+  threads = 4
+
+  [meta.3]
+  host = "172.16.33.35"
+  port = 31853
+  threads = 4
+
+  [meta.4]
+  host = "172.16.33.35"
+  port = 31854
+  threads = 4
+
+[data]
+num=3
+
+  [data.0]
+  host = "172.16.33.35"
+  port = 31856
+  threads = 10
+  
+  [data.1]
+  host = "172.16.33.35"
+  port = 31857
+  threads = 10
+  
+  [data.2]
+  host = "172.16.33.35"
+  port = 31858
+  threads = 10
+  

@@ -1,0 +1,7 @@
+namespace dfs.metadata;
+
+table Inode {
+  id: uint64;
+}
+
+root_type Inode;

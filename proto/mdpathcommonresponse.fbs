@@ -1,0 +1,28 @@
+include "mdrequest.fbs";
+include "mdmovenoderequest.fbs";
+
+namespace dfs.mdrequest;
+
+//table Dirstream {
+//  alloc: ulong;
+//  offset: long;
+//  table_off: long;
+//  size: ulong;
+//  id: ulong;
+//  fd: int;
+//  data: [Dirent];
+//}
+
+table MDPathCommonResponse {
+  flag: short;
+  reqs: long;
+  next_meta_server: short;
+  old_path: string;
+  new_path: string;
+  length: short;
+  server_hlc: uint64;
+//  inode: Inode;
+//  dir: Dirstream;
+}
+
+root_type MDPathCommonResponse;
