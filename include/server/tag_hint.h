@@ -4,7 +4,7 @@
 //
 // Design: "Option C (local mirror)" — each bucket keeps an 8-entry tag array
 // mirroring the slot layout of the hash region. Each tag is the low 32 bits
-// of the key's fingerprint (60-bit fp), so a bucket costs 8 × 4B = 32B.
+// of the key's fingerprint (56-bit fp), so a bucket costs 8 × 4B = 32B.
 //
 // For N = tl_n + bl_n ≈ 48K buckets: 48K × 32B = 1.5 MB per hashtable. All
 // in local DRAM, no CXL traffic.
@@ -16,7 +16,7 @@
 //
 // Because clear() targets the exact slot, there is no bit accumulation under
 // churn and no cross-fp false-negative hazard. The only false positive comes
-// from two different 60-bit fps sharing the same low 32 bits in the same
+// from two different 56-bit fps sharing the same low 32 bits in the same
 // bucket (~1/2^32 per slot). Tag 0 is reserved as "empty", so we remap a
 // low32 of 0 to 1 to avoid colliding with the empty sentinel.
 //
@@ -124,7 +124,7 @@ public:
 private:
   // Truncate to low 32 bits. Remap 0 → 1 so the sentinel "empty slot" (0)
   // is never confused with a real fp whose low 32 bits happen to be zero.
-  // The 60-bit fp itself is already non-zero (make_fp guarantees that), so
+  // The 56-bit fp itself is already non-zero (make_fp guarantees that), so
   // at most one distinct fp value is affected.
   static uint32_t fp_to_tag(uint64_t fp) {
     uint32_t t = static_cast<uint32_t>(fp);

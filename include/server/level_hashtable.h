@@ -6,8 +6,8 @@
 // Bucket: 64B hash region (8×8B slot_meta) + 8×128B value region = 1088B
 //
 // Hash region layout:
-//   meta[0] (8B): bit[63]=D (lock), bit[62:60]=version(3b), bit[59:0]=fp(60b)
-//   meta[1..7] (8B each): bit[59:0]=fp (60b), upper bits unused (0)
+//   meta[0] (8B): bit[63]=D (lock), bit[62:56]=version(7b), bit[55:0]=fp(56b)
+//   meta[1..7] (8B each): bit[55:0]=fp (56b), upper bits unused (0)
 //   fp==0 ⟹ empty slot; fp remapped from 0→1
 //
 // Write protocol (Insert/Update/Delete/Migration):
@@ -111,8 +111,11 @@ template <typename K, typename V, typename Hash,
 class TwoLevelHashtable {
 public:
   static constexpr uint64_t kDirtyBit = 1ULL << 63;
-  static constexpr int kVersionShift = 60;
-  static constexpr uint64_t kFpMask = (1ULL << 60) - 1;
+  static constexpr int kVersionBits = 7;
+  static constexpr int kVersionShift = 63 - kVersionBits;
+  static constexpr uint64_t kVersionValueMask =
+      (1ULL << kVersionBits) - 1; // 0x7F
+  static constexpr uint64_t kFpMask = (1ULL << kVersionShift) - 1;
   static constexpr int kSlots = 8;
   static constexpr size_t kValueSize = 128;
   static constexpr size_t kHashRegionSize = kSlots * sizeof(uint64_t); // 64B
@@ -946,13 +949,13 @@ private:
 
   static uint64_t make_locked(uint64_t meta0) {
     uint64_t fp = meta0 & kFpMask;
-    uint64_t ver = ((meta0 >> kVersionShift) & 0x7) + 1;
-    return kDirtyBit | ((ver & 0x7) << kVersionShift) | fp;
+    uint64_t ver = ((meta0 >> kVersionShift) & kVersionValueMask) + 1;
+    return kDirtyBit | ((ver & kVersionValueMask) << kVersionShift) | fp;
   }
 
   static uint64_t make_unlocked(uint64_t pre_cas_meta0, uint64_t fp) {
-    uint64_t ver = ((pre_cas_meta0 >> kVersionShift) & 0x7) + 1;
-    return ((ver & 0x7) << kVersionShift) | fp;
+    uint64_t ver = ((pre_cas_meta0 >> kVersionShift) & kVersionValueMask) + 1;
+    return ((ver & kVersionValueMask) << kVersionShift) | fp;
   }
 
   static void set_unlocked_meta0(uint64_t *new_keys, uint64_t pre_cas_meta0,
