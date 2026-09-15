@@ -548,16 +548,24 @@ private:
     uint64_t ctrl = read_meta_ctrl();
     if (ResizeCtrl{ctrl}.state() != (uint8_t)ResizeState::NORMAL) {
       uint64_t cur_ver = resize_cache_.version;
-      while (read_meta_version() == cur_ver)
+      while (read_meta_version() == cur_ver) {
+        // Another local thread may already have joined this version.
+        if (migration_.active.load(std::memory_order_acquire))
+          return false;
         _mm_pause();
+      }
       return false;
     }
 
     uint64_t new_ctrl = (ctrl & ~0xFFULL) | (uint64_t)ResizeState::MIGRATING;
     if (!cas_meta_ctrl(ctrl, new_ctrl)) {
       uint64_t cur_ver = resize_cache_.version;
-      while (read_meta_version() == cur_ver)
+      while (read_meta_version() == cur_ver) {
+        // A local join can also race with this failed resize CAS.
+        if (migration_.active.load(std::memory_order_acquire))
+          return false;
         _mm_pause();
+      }
       return false;
     }
 
@@ -1749,7 +1757,8 @@ private:
   // ── Movement (paper-style try_movement + b2t_movement) ──
   //
   // Called after pass1/pass2 failed to place (key, val) directly into any
-  // of the candidate buckets. Two phases, both faithful to Zuo et al.
+  // of the candidate buckets. Two original phases, faithful to Zuo et al.,
+  // followed by a resize-only two-hop fallback.
   // ATC 2018 Level-Hashing:
   //
   //   Phase A (same-level 1-hop, try_movement):
@@ -1764,6 +1773,10 @@ private:
   //     compute the victim's TWO TL candidates (h1 % tl_n_, h2 % tl_n_).
   //     Try each: if it has space and can be trylocked, promote the
   //     victim and place (fp_new, val) in the vacated BL slot.
+  //
+  //   Phase C (resize-only fallback):
+  //     After A/B fail, repeat with one extra displacement allowed.
+  //     Child calls stay one-hop and do not increment size_.
   //
   // Takes the candidate set from ``insert_impl`` rather than recomputing
   // it locally so we see a consistent snapshot of migration state: if
@@ -1812,6 +1825,31 @@ private:
         return 1;
     }
 
+    // Phase C: only an ongoing resize gets one extra displacement. Keep
+    // the original one-hop attempts above as the normal fast path.
+    bool resizing = false;
+    for (int c = 0; c < cands.count; ++c)
+      resizing |= cands.level[c] == 2;
+    if (resizing) {
+      SPDLOG_INFO("try_migrate_and_insert resizing.");
+      for (int c = 0; c < cands.count; ++c) {
+        if (cands.level[c] == 2)
+          continue;
+        size_t level_n = cands.level[c] == 0 ? cands.tl_n : cands.bl_n;
+        if (same_level_movement_and_place(cands.level[c], cands.idx[c],
+                                          cands.base[c], level_n, fp_new, val,
+                                          &cands))
+          return 1;
+      }
+      for (int c = 0; c < cands.count; ++c) {
+        if (cands.level[c] != 1)
+          continue;
+        if (b2t_movement_and_place(cands.idx[c], cands.base[c], tl_base,
+                                   cands.tl_n, fp_new, val, true))
+          return 1;
+      }
+    }
+    SPDLOG_INFO("try_migrate_and_insert failed.");
     return 0;
   }
 
@@ -1823,7 +1861,9 @@ private:
   // from the caller's Candidates snapshot — must not be re-resolved here.
   bool same_level_movement_and_place(int level, size_t idx, uint64_t base,
                                      size_t level_n, uint64_t fp_new,
-                                     const V &val) {
+                                     const V &val,
+                                     const Candidates *extra_layout = nullptr,
+                                     bool count_insert = true) {
     uint64_t hr_off = base + idx * kBucketSize;
 
     alignas(64) uint64_t keys[kSlots];
@@ -1866,27 +1906,50 @@ private:
       alignas(64) uint64_t alt_keys[kSlots];
       HT_STAT_INC(insert_cxl_hr_reads);
       gDevice->CXLReadSync(alt_hr, kHashRegionSize, alt_keys);
-      if ((alt_keys[0] & kDirtyBit) || !has_empty_slot(alt_keys))
+      if (alt_keys[0] & kDirtyBit)
         continue;
 
-      if (gDevice->CXLAtomicCasSync(alt_hr, alt_keys[0],
-                                    make_locked(alt_keys[0]), &old) != 0)
-        continue;
+      if (!has_empty_slot(alt_keys)) {
+        if (extra_layout == nullptr)
+          continue;
+        // The child places v_value in jdx, taking its own locks. It is
+        // strictly one-hop and does not count this internal move.
+        bool placed = same_level_movement_and_place(
+            level, jdx, base, level_n, v_fp, v_value, nullptr, false);
+        if (!placed && level == 1) {
+          for (int c = 0; c < extra_layout->count; ++c) {
+            if (extra_layout->level[c] != 0)
+              continue;
+            placed = b2t_movement_and_place(jdx, base, extra_layout->base[c],
+                                            extra_layout->tl_n, v_fp, v_value,
+                                            false, false);
+            break;
+          }
+        }
+        if (!placed)
+          continue;
+      } else {
+        if (gDevice->CXLAtomicCasSync(alt_hr, alt_keys[0],
+                                      make_locked(alt_keys[0]), &old) != 0)
+          continue;
 
-      int alt_target = find_empty_slot(alt_keys);
-      if (alt_target < 0) {
-        HT_STAT_INC(insert_cxl_hr_writes); // unlock_bucket
-        unlock_bucket(alt_hr, alt_keys);
-        continue;
+        int alt_target = find_empty_slot(alt_keys);
+        if (alt_target < 0) {
+          HT_STAT_INC(insert_cxl_hr_writes); // unlock_bucket
+          unlock_bucket(alt_hr, alt_keys);
+          continue;
+        }
+
+        // Move victim to the alternate bucket.
+        uint64_t alt_v_off = base + jdx * kBucketSize + kHashRegionSize +
+                             alt_target * kValueSize;
+        HT_STAT_INC(insert_cxl_val_writes);
+        gDevice->CXLWriteSync(alt_v_off, kValueSize, vbuf);
+        HT_STAT_INC(insert_cxl_hr_writes); // commit_bucket alt
+        commit_bucket(alt_hr, alt_keys, alt_target, v_fp);
+        HT_STAT_INC(hint_set_insert);
+        hint_set(global_bucket_id(level, jdx), alt_target, v_fp);
       }
-
-      // Move victim to the alternate bucket.
-      uint64_t alt_v_off =
-          base + jdx * kBucketSize + kHashRegionSize + alt_target * kValueSize;
-      HT_STAT_INC(insert_cxl_val_writes);
-      gDevice->CXLWriteSync(alt_v_off, kValueSize, vbuf);
-      HT_STAT_INC(insert_cxl_hr_writes); // commit_bucket alt
-      commit_bucket(alt_hr, alt_keys, alt_target, v_fp);
 
       // Place new entry in the vacated slot of the source bucket.
       alignas(64) char nbuf[kValueSize] = {};
@@ -1896,11 +1959,10 @@ private:
       HT_STAT_INC(insert_cxl_hr_writes); // commit_bucket src
       commit_bucket(hr_off, keys, s, fp_new);
 
-      size_.fetch_add(1, std::memory_order_relaxed);
+      if (count_insert)
+        size_.fetch_add(1, std::memory_order_relaxed);
       HT_STAT_INC(hint_set_insert);
       hint_set(global_bucket_id(level, idx), s, fp_new);
-      HT_STAT_INC(hint_set_insert);
-      hint_set(global_bucket_id(level, jdx), alt_target, v_fp);
       return true;
     }
 
@@ -1916,7 +1978,9 @@ private:
   // failure, unlock the BL bucket and return false. bl_base/tl_base/tl_n
   // come from the caller's Candidates snapshot — must not be re-resolved.
   bool b2t_movement_and_place(size_t bl_idx, uint64_t bl_base, uint64_t tl_base,
-                              size_t tl_n, uint64_t fp_new, const V &val) {
+                              size_t tl_n, uint64_t fp_new, const V &val,
+                              bool allow_extra_move = false,
+                              bool count_insert = true) {
     uint64_t hr_off = bl_base + bl_idx * kBucketSize;
 
     alignas(64) uint64_t keys[kSlots];
@@ -1955,27 +2019,36 @@ private:
         alignas(64) uint64_t tl_keys[kSlots];
         HT_STAT_INC(insert_cxl_hr_reads);
         gDevice->CXLReadSync(tl_hr, kHashRegionSize, tl_keys);
-        if ((tl_keys[0] & kDirtyBit) || !has_empty_slot(tl_keys))
+        if (tl_keys[0] & kDirtyBit)
           continue;
 
-        if (gDevice->CXLAtomicCasSync(tl_hr, tl_keys[0],
-                                      make_locked(tl_keys[0]), &old) != 0)
-          continue;
+        if (!has_empty_slot(tl_keys)) {
+          if (!allow_extra_move ||
+              !same_level_movement_and_place(0, tl_bi, tl_base, tl_n, v_fp,
+                                             v_value, nullptr, false))
+            continue;
+        } else {
+          if (gDevice->CXLAtomicCasSync(tl_hr, tl_keys[0],
+                                        make_locked(tl_keys[0]), &old) != 0)
+            continue;
 
-        int tl_target = find_empty_slot(tl_keys);
-        if (tl_target < 0) {
-          HT_STAT_INC(insert_cxl_hr_writes); // unlock_bucket
-          unlock_bucket(tl_hr, tl_keys);
-          continue;
+          int tl_target = find_empty_slot(tl_keys);
+          if (tl_target < 0) {
+            HT_STAT_INC(insert_cxl_hr_writes); // unlock_bucket
+            unlock_bucket(tl_hr, tl_keys);
+            continue;
+          }
+
+          // Promote victim to TL.
+          uint64_t tl_v_off = tl_base + tl_bi * kBucketSize + kHashRegionSize +
+                              tl_target * kValueSize;
+          HT_STAT_INC(insert_cxl_val_writes);
+          gDevice->CXLWriteSync(tl_v_off, kValueSize, vbuf);
+          HT_STAT_INC(insert_cxl_hr_writes); // commit_bucket tl
+          commit_bucket(tl_hr, tl_keys, tl_target, v_fp);
+          HT_STAT_INC(hint_set_insert);
+          hint_set(global_bucket_id(0, tl_bi), tl_target, v_fp);
         }
-
-        // Promote victim to TL.
-        uint64_t tl_v_off = tl_base + tl_bi * kBucketSize + kHashRegionSize +
-                            tl_target * kValueSize;
-        HT_STAT_INC(insert_cxl_val_writes);
-        gDevice->CXLWriteSync(tl_v_off, kValueSize, vbuf);
-        HT_STAT_INC(insert_cxl_hr_writes); // commit_bucket tl
-        commit_bucket(tl_hr, tl_keys, tl_target, v_fp);
 
         // Place new entry in the vacated BL slot.
         alignas(64) char nbuf[kValueSize] = {};
@@ -1985,11 +2058,10 @@ private:
         HT_STAT_INC(insert_cxl_hr_writes); // commit_bucket bl
         commit_bucket(hr_off, keys, s, fp_new);
 
-        size_.fetch_add(1, std::memory_order_relaxed);
+        if (count_insert)
+          size_.fetch_add(1, std::memory_order_relaxed);
         HT_STAT_INC(hint_set_insert);
         hint_set(global_bucket_id(1, bl_idx), s, fp_new);
-        HT_STAT_INC(hint_set_insert);
-        hint_set(global_bucket_id(0, tl_bi), tl_target, v_fp);
         return true;
       }
     }
